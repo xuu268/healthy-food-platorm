@@ -1,0 +1,166 @@
+spring:
+  application:
+    name: healthy-food-platform
+  
+  profiles:
+    active: dev
+  
+  # 数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/healthy_food?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  
+  # JPA配置
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true
+  
+  # Redis配置
+  redis:
+    host: localhost
+    port: 6379
+    password: 
+    database: 0
+    timeout: 3000ms
+    lettuce:
+      pool:
+        max-active: 20
+        max-idle: 10
+        min-idle: 5
+        max-wait: -1ms
+  
+  # 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
+  
+  # 消息队列配置（预留）
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+  
+  # 邮件配置（预留）
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 
+    password: 
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+# 应用配置
+app:
+  # JWT配置
+  jwt:
+    secret: healthy-food-platform-secret-key-2026
+    expiration: 86400000  # 24小时
+    refresh-expiration: 604800000  # 7天
+  
+  # 微信支付配置
+  wechat:
+    pay:
+      mch-id: 
+      merchant-serial-number: 
+      api-v3-key: 
+      private-key-path: 
+      notify-url: https://your-domain.com/api/payment/notify
+  
+  # 阿里云短信配置
+  aliyun:
+    sms:
+      access-key-id: 
+      access-key-secret: 
+      sign-name: 健康餐饮
+      template-code: 
+  
+  # 腾讯云COS配置
+  tencent:
+    cos:
+      secret-id: 
+      secret-key: 
+      region: ap-shanghai
+      bucket-name: healthy-food
+  
+  # 业务配置
+  business:
+    # 创作者分成比例
+    creator-commission-rate: 0.2  # 20%
+    
+    # 积分规则
+    points:
+      content-publish: 10
+      content-quality: 50
+      content-viral: 200
+      shop-connection: 100
+      shop-review: 50
+      shop-repurchase: 200
+      invite-creator: 500
+    
+    # 健康分析配置
+    health:
+      daily-calorie-target: 2000
+      protein-target: 60  # 克
+      carb-target: 300   # 克
+      fat-target: 65     # 克
+
+# MyBatis Plus配置
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# 日志配置
+logging:
+  level:
+    com.healthyfood: DEBUG
+    org.springframework.security: INFO
+  file:
+    name: logs/healthy-food.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Knife4j API文档配置
+knife4j:
+  enable: true
+  setting:
+    language: zh-CN
+    enable-swagger-models: true
+    swagger-model-name: 数据模型
+  cors: true
+  production: false
+
+# 服务器配置
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
+    min-response-size: 1024

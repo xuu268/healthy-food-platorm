@@ -1,0 +1,103 @@
+# 开发环境配置
+spring:
+  # 开发环境数据库
+  datasource:
+    url: jdbc:mysql://localhost:3306/healthy_food_dev?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+  
+  # 开发环境Redis
+  redis:
+    host: localhost
+    port: 6379
+    database: 1
+  
+  # 开发环境RabbitMQ
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+  
+  # 开发时显示详细错误信息
+  mvc:
+    throw-exception-if-no-handler-found: true
+  resources:
+    add-mappings: false
+  
+  # 开发时允许跨域
+  web:
+    cors:
+      allowed-origins: "*"
+      allowed-methods: "*"
+      allowed-headers: "*"
+      allow-credentials: true
+
+# 开发环境业务配置
+app:
+  # 开发环境使用测试支付
+  wechat:
+    pay:
+      mch-id: test-mch-id
+      merchant-serial-number: test-serial
+      api-v3-key: test-api-v3-key
+      private-key-path: classpath:certs/test-private-key.pem
+  
+  # 开发环境使用测试短信
+  aliyun:
+    sms:
+      access-key-id: test-access-key
+      access-key-secret: test-secret-key
+      sign-name: 测试签名
+      template-code: SMS_TEST
+  
+  # 开发环境使用本地存储
+  file:
+    storage:
+      type: local
+      local:
+        path: ./uploads
+        url-prefix: http://localhost:8080/api/uploads
+
+# 开发环境日志配置
+logging:
+  level:
+    com.healthyfood: DEBUG
+    org.springframework: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  file:
+    name: logs/healthy-food-dev.log
+
+# 开发环境服务器配置
+server:
+  port: 8080
+  error:
+    include-stacktrace: always
+  servlet:
+    session:
+      timeout: 30m
+
+# 开发环境Swagger配置
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+  show-actuator: true
+
+# 开发环境缓存配置
+spring.cache:
+  type: redis
+  redis:
+    time-to-live: 600s
+    cache-null-values: false
+    key-prefix: "dev:"
+
+# 开发环境安全配置（宽松）
+security:
+  basic:
+    enabled: false
