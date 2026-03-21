@@ -1,32 +1,40 @@
+# 健康餐饮平台应用配置
+
+# 应用基本信息
 spring:
   application:
     name: healthy-food-platform
-  
-  profiles:
-    active: dev
+    version: 1.0.0
   
   # 数据源配置
   datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/healthy_food?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
-    password: 123456
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
+      connection-timeout: 30000
       maximum-pool-size: 20
       minimum-idle: 5
-      connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
   
   # JPA配置
   jpa:
+    database: MYSQL
+    show-sql: true
     hibernate:
       ddl-auto: update
-    show-sql: true
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
         format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
   
   # Redis配置
   redis:
@@ -34,7 +42,7 @@ spring:
     port: 6379
     password: 
     database: 0
-    timeout: 3000ms
+    timeout: 5000ms
     lettuce:
       pool:
         max-active: 20
@@ -42,33 +50,79 @@ spring:
         min-idle: 5
         max-wait: -1ms
   
+  # 缓存配置
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000  # 1小时
+      cache-null-values: false
+  
   # 文件上传配置
   servlet:
     multipart:
       max-file-size: 10MB
-      max-request-size: 100MB
+      max-request-size: 50MB
   
-  # 消息队列配置（预留）
+  # 消息队列配置（可选）
   rabbitmq:
     host: localhost
     port: 5672
     username: guest
     password: guest
   
-  # 邮件配置（预留）
+  # 邮件配置
   mail:
-    host: smtp.qq.com
+    host: smtp.gmail.com
     port: 587
-    username: 
-    password: 
+    username: your-email@gmail.com
+    password: your-password
     properties:
       mail:
         smtp:
           auth: true
           starttls:
             enable: true
+  
+  # 定时任务配置
+  task:
+    scheduling:
+      pool:
+        size: 10
+  
+  # 异步配置
+  async:
+    core-pool-size: 10
+    max-pool-size: 50
+    queue-capacity: 100
 
-# 应用配置
+# 服务器配置
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+    session:
+      timeout: 30m
+  tomcat:
+    max-threads: 200
+    min-spare-threads: 20
+    accept-count: 100
+    connection-timeout: 20000
+
+# 日志配置
+logging:
+  level:
+    com.healthyfood: DEBUG
+    org.springframework.web: INFO
+    org.hibernate: WARN
+  file:
+    name: logs/healthy-food.log
+    max-size: 10MB
+    max-history: 30
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# 应用自定义配置
 app:
   # JWT配置
   jwt:
@@ -76,91 +130,152 @@ app:
     expiration: 86400000  # 24小时
     refresh-expiration: 604800000  # 7天
   
-  # 微信支付配置
-  wechat:
-    pay:
-      mch-id: 
-      merchant-serial-number: 
-      api-v3-key: 
-      private-key-path: 
-      notify-url: https://your-domain.com/api/payment/notify
+  # 文件存储配置
+  file:
+    upload-dir: uploads/
+    max-size: 10485760  # 10MB
+    allowed-extensions: jpg,jpeg,png,gif,pdf,doc,docx
   
-  # 阿里云短信配置
-  aliyun:
-    sms:
-      access-key-id: 
-      access-key-secret: 
-      sign-name: 健康餐饮
-      template-code: 
-  
-  # 腾讯云COS配置
-  tencent:
-    cos:
-      secret-id: 
-      secret-key: 
-      region: ap-shanghai
-      bucket-name: healthy-food
+  # 安全配置
+  security:
+    password-encoder-strength: 10
+    cors:
+      allowed-origins: http://localhost:3000,http://localhost:8080
+      allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+      allowed-headers: *
+      allow-credentials: true
   
   # 业务配置
   business:
-    # 创作者分成比例
-    creator-commission-rate: 0.2  # 20%
+    # 订单配置
+    order:
+      auto-cancel-time: 1800  # 30分钟未支付自动取消
+      max-items-per-order: 20
+      min-order-amount: 20.0  # 最低起送金额
     
-    # 积分规则
-    points:
-      content-publish: 10
-      content-quality: 50
-      content-viral: 200
-      shop-connection: 100
-      shop-review: 50
-      shop-repurchase: 200
-      invite-creator: 500
+    # 配送配置
+    delivery:
+      base-fee: 5.0  # 基础配送费
+      free-delivery-amount: 50.0  # 免配送费金额
+      estimated-delivery-time: 30  # 预计配送时间（分钟）
     
-    # 健康分析配置
+    # 商家配置
+    shop:
+      commission-rate: 0.1  # 平台佣金率
+      settlement-period: 7  # 结算周期（天）
+    
+    # 推荐配置
+    recommendation:
+      cache-time: 3600  # 推荐结果缓存时间（秒）
+      max-recommendations: 20  # 最大推荐数量
+      similarity-threshold: 0.7  # 相似度阈值
+  
+  # 第三方服务配置
+  third-party:
+    # 支付服务
+    payment:
+      wechat:
+        app-id: your-wechat-app-id
+        mch-id: your-wechat-mch-id
+        api-key: your-wechat-api-key
+      alipay:
+        app-id: your-alipay-app-id
+        private-key: your-alipay-private-key
+        public-key: your-alipay-public-key
+    
+    # 短信服务
+    sms:
+      provider: aliyun
+      access-key: your-sms-access-key
+      access-secret: your-sms-access-secret
+      sign-name: 健康餐饮
+      template-code: SMS_123456789
+    
+    # 地图服务
+    map:
+      provider: amap
+      api-key: your-map-api-key
+    
+    # 天气服务
+    weather:
+      provider: hefeng
+      api-key: your-weather-api-key
+
+# Swagger配置
+swagger:
+  enabled: true
+  title: 健康餐饮平台 API文档
+  description: 健康餐饮平台后端API接口文档
+  version: 1.0.0
+  contact:
+    name: 健康餐饮团队
+    url: https://healthyfood.ai
+    email: contact@healthyfood.ai
+  base-package: com.healthyfood.controller
+  paths: /api/.*
+
+# 监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
     health:
-      daily-calorie-target: 2000
-      protein-target: 60  # 克
-      carb-target: 300   # 克
-      fat-target: 65     # 克
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
-# MyBatis Plus配置
-mybatis-plus:
-  configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-    map-underscore-to-camel-case: true
-  global-config:
-    db-config:
-      logic-delete-field: deleted
-      logic-delete-value: 1
-      logic-not-delete-value: 0
-
-# 日志配置
+# 环境特定配置
+---
+# 开发环境
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:mysql://localhost:3306/healthy_food_dev?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: update
 logging:
   level:
     com.healthyfood: DEBUG
-    org.springframework.security: INFO
+
+---
+# 测试环境
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:mysql://test-db:3306/healthy_food_test?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+logging:
+  level:
+    com.healthyfood: INFO
+
+---
+# 生产环境
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: jdbc:mysql://prod-db:3306/healthy_food_prod?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: none
+logging:
+  level:
+    com.healthyfood: WARN
   file:
-    name: logs/healthy-food.log
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-
-# Knife4j API文档配置
-knife4j:
-  enable: true
-  setting:
-    language: zh-CN
-    enable-swagger-models: true
-    swagger-model-name: 数据模型
-  cors: true
-  production: false
-
-# 服务器配置
-server:
-  port: 8080
-  servlet:
-    context-path: /api
-  compression:
-    enabled: true
-    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
-    min-response-size: 1024
+    name: /var/log/healthy-food/application.log
