@@ -10,6 +10,7 @@ import javax.persistence.*;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -182,6 +183,18 @@ public class Product implements Serializable {
     @Column(columnDefinition = "tinyint default 0")
     private Integer deleted = 0;
 
+    /**
+     * 成分列表（与成分表系统关联）
+     */
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<ProductIngredient> ingredients;
+    
+    /**
+     * 成分分析结果（与成分表系统关联）
+     */
+    @OneToOne(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private IngredientAnalysis ingredientAnalysis;
+    
     /**
      * 检查商品是否上架
      */

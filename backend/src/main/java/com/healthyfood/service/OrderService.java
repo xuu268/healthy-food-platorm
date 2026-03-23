@@ -807,4 +807,412 @@ public class OrderService {
                 Order.OrderStatus.DELIVERED, Order.OrderStatus.FAILED
         ));
         
-        valid
+        validTransitions.put(Order.OrderStatus.DELIVERED, Set.of(
+                Order.OrderStatus.COMPLETED
+        ));
+        
+        Set<Order.OrderStatus> allowed = validTransitions.get(oldStatus);
+        return allowed != null && allowed.contains(newStatus);
+    }
+    
+    // ==================== 统计和报表功能 ====================
+    
+    /**
+     * 获取订单统计
+     */
+    public ApiResult<OrderStatisticsVO> getOrderStatistics(Long shopId, LocalDateTime startTime, LocalDateTime endTime) {
+        try {
+            log.info("获取订单统计: shopId={}, startTime={}, endTime={}", shopId, startTime, endTime);
+            
+            // 验证参数
+            if (startTime == null || endTime == null) {
+                return ApiResult.error(ErrorCode.PARAM_ERROR, "开始时间和结束时间不能为空");
+            }
+            
+            if (startTime.isAfter(endTime)) {
+                return ApiResult.error(ErrorCode.PARAM_ERROR, "开始时间不能晚于结束时间");
+            }
+            
+            // 构建统计VO
+            OrderStatisticsVO statistics = buildOrderStatistics(shopId, startTime, endTime);
+            
+            return ApiResult.success(statistics);
+        } catch (Exception e) {
+            log.error("获取订单统计失败: shopId={}", shopId, e);
+            return ApiResult.error(ErrorCode.SYSTEM_ERROR, "获取订单统计失败");
+        }
+    }
+    
+    /**
+     * 构建订单统计
+     */
+    private OrderStatisticsVO buildOrderStatistics(Long shopId, LocalDateTime startTime, LocalDateTime endTime) {
+        OrderStatisticsVO.OrderStatisticsVOBuilder builder = OrderStatisticsVO.builder()
+                .shopId(shopId)
+                .startDate(startTime.toLocalDate())
+                .endDate(endTime.toLocalDate())
+                .generatedTime(LocalDateTime.now())
+                .timezone("Asia/Shanghai");
+        
+        // 获取基础统计
+        List<Order> orders = getOrdersInPeriod(shopId, startTime, endTime);
+        builder.totalOrders(orders.size());
+        
+        // 计算各种状态订单数量
+        Map<String, Integer> statusCounts = calculateStatusCounts(orders);
+        builder.completedOrders(statusCounts.getOrDefault("COMPLETED", 0));
+        builder.cancelledOrders(statusCounts.getOrDefault("CANCELLED", 0));
+        builder.pendingOrders(statusCounts.getOrDefault("PENDING", 0) + 
+                            statusCounts.getOrDefault("CONFIRMED", 0) + 
+                            statusCounts.getOrDefault("PREPARING", 0));
+        builder.refundedOrders(statusCounts.getOrDefault("REFUNDED", 0));
+        
+        // 计算金额统计
+        Map<String, Object> amountStats = calculateAmountStats(orders);
+        builder.totalRevenue((BigDecimal) amountStats.get("totalRevenue"));
+        builder.averageOrderValue((BigDecimal) amountStats.get("averageOrderValue"));
+        builder.maxOrderValue((BigDecimal) amountStats.get("maxOrderValue"));
+        builder.minOrderValue((BigDecimal) amountStats.get("minOrderValue"));
+        
+        // 计算客户统计
+        Map<String, Object> customerStats = calculateCustomerStats(orders);
+        builder.totalCustomers((Integer) customerStats.get("totalCustomers"));
+        builder.newCustomers((Integer) customerStats.get("newCustomers"));
+        builder.returningCustomers((Integer) customerStats.get("returningCustomers"));
+        
+        // 计算商品统计
+        Map<String, Object> productStats = calculateProductStats(orders);
+        builder.totalItemsSold((Integer) productStats.get("totalItemsSold"));
+        builder.averageItemsPerOrder((BigDecimal) productStats.get("averageItemsPerOrder"));
+        
+        // 设置时间分布
+        builder.hourlyDistribution(calculateHourlyDistribution(orders));
+        builder.dailyDistribution(calculateDailyDistribution(orders));
+        builder.monthlyDistribution(calculateMonthlyDistribution(orders));
+        
+        // 设置状态分布
+        builder.statusDistribution(statusCounts);
+        builder.paymentStatusDistribution(calculatePaymentStatusDistribution(orders));
+        builder.deliveryStatusDistribution(calculateDeliveryStatusDistribution(orders));
+        
+        // 设置支付方式分布
+        builder.paymentMethodDistribution(calculatePaymentMethodDistribution(orders));
+        
+        // 设置商品统计
+        builder.topProducts((List<OrderStatisticsVO.ProductStatVO>) productStats.get("topProducts"));
+        builder.topCategories((List<OrderStatisticsVO.CategoryStatVO>) productStats.get("topCategories"));
+        
+        // 设置客户统计
+        builder.topCustomers((List<OrderStatisticsVO.CustomerStatVO>) customerStats.get("topCustomers"));
+        builder.customerRegionDistribution((Map<String, Integer>) customerStats.get("customerRegionDistribution"));
+        
+        // 设置配送统计
+        Map<String, Object> deliveryStats = calculateDeliveryStats(orders);
+        builder.averageDeliveryTime((BigDecimal) deliveryStats.get("averageDeliveryTime"));
+        builder.onTimeDeliveryRate((BigDecimal) deliveryStats.get("onTimeDeliveryRate"));
+        builder.deliveryPersonPerformance((Map<String, Integer>) deliveryStats.get("deliveryPersonPerformance"));
+        
+        // 设置退款统计
+        Map<String, Object> refundStats = calculateRefundStats(orders);
+        builder.totalRefunds((Integer) refundStats.get("totalRefunds"));
+        builder.totalRefundAmount((BigDecimal) refundStats.get("totalRefundAmount"));
+        builder.refundRate((BigDecimal) refundStats.get("refundRate"));
+        builder.refundReasonDistribution((Map<String, Integer>) refundStats.get("refundReasonDistribution"));
+        
+        // 设置评价统计
+        Map<String, Object> reviewStats = calculateReviewStats(orders);
+        builder.averageRating((Double) reviewStats.get("averageRating"));
+        builder.totalReviews((Integer) reviewStats.get("totalReviews"));
+        builder.ratingDistribution((Map<Integer, Integer>) reviewStats.get("ratingDistribution"));
+        
+        // 设置趋势分析
+        builder.revenueTrend(calculateRevenueTrend(shopId, startTime, endTime));
+        builder.orderTrend(calculateOrderTrend(shopId, startTime, endTime));
+        builder.customerTrend(calculateCustomerTrend(shopId, startTime, endTime));
+        
+        // 设置对比分析（与上一周期对比）
+        LocalDateTime previousStartTime = startTime.minusDays(7);
+        LocalDateTime previousEndTime = endTime.minusDays(7);
+        OrderStatisticsVO previousStats = buildOrderStatistics(shopId, previousStartTime, previousEndTime);
+        builder.previousPeriod(previousStats);
+        
+        // 计算增长率
+        if (previousStats.getTotalRevenue() != null && previousStats.getTotalRevenue().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal revenueGrowth = builder.totalRevenue.subtract(previousStats.getTotalRevenue())
+                    .divide(previousStats.getTotalRevenue(), 4, BigDecimal.ROUND_HALF_UP)
+                    .multiply(new BigDecimal("100"));
+            builder.revenueGrowthRate(revenueGrowth);
+        }
+        
+        if (previousStats.getTotalOrders() != null && previousStats.getTotalOrders() > 0) {
+            BigDecimal orderGrowth = new BigDecimal(builder.totalOrders - previousStats.getTotalOrders())
+                    .divide(new BigDecimal(previousStats.getTotalOrders()), 4, BigDecimal.ROUND_HALF_UP)
+                    .multiply(new BigDecimal("100"));
+            builder.orderGrowthRate(orderGrowth);
+        }
+        
+        if (previousStats.getTotalCustomers() != null && previousStats.getTotalCustomers() > 0) {
+            BigDecimal customerGrowth = new BigDecimal(builder.totalCustomers - previousStats.getTotalCustomers())
+                    .divide(new BigDecimal(previousStats.getTotalCustomers()), 4, BigDecimal.ROUND_HALF_UP)
+                    .multiply(new BigDecimal("100"));
+            builder.customerGrowthRate(customerGrowth);
+        }
+        
+        // 设置预测分析
+        Map<String, Object> predictions = predictNextPeriod(orders, startTime, endTime);
+        builder.predictedNextPeriodRevenue((BigDecimal) predictions.get("predictedRevenue"));
+        builder.predictedNextPeriodOrders((Integer) predictions.get("predictedOrders"));
+        builder.recommendations((List<String>) predictions.get("recommendations"));
+        
+        return builder.build();
+    }
+    
+    /**
+     * 获取时间段内的订单
+     */
+    private List<Order> getOrdersInPeriod(Long shopId, LocalDateTime startTime, LocalDateTime endTime) {
+        if (shopId != null) {
+            return orderRepository.findByShopIdAndCreateTimeBetween(shopId, startTime, endTime);
+        } else {
+            return orderRepository.findByCreateTimeBetween(startTime, endTime);
+        }
+    }
+    
+    /**
+     * 计算状态分布
+     */
+    private Map<String, Integer> calculateStatusCounts(List<Order> orders) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (Order order : orders) {
+            String status = order.getStatus().name();
+            counts.put(status, counts.getOrDefault(status, 0) + 1);
+        }
+        return counts;
+    }
+    
+    /**
+     * 计算金额统计
+     */
+    private Map<String, Object> calculateAmountStats(List<Order> orders) {
+        Map<String, Object> stats = new HashMap<>();
+        
+        BigDecimal totalRevenue = BigDecimal.ZERO;
+        BigDecimal maxOrderValue = BigDecimal.ZERO;
+        BigDecimal minOrderValue = orders.isEmpty() ? BigDecimal.ZERO : null;
+        
+        for (Order order : orders) {
+            if (order.getFinalAmount() != null) {
+                BigDecimal amount = order.getFinalAmount();
+                totalRevenue = totalRevenue.add(amount);
+                
+                if (amount.compareTo(maxOrderValue) > 0) {
+                    maxOrderValue = amount;
+                }
+                
+                if (minOrderValue == null || amount.compareTo(minOrderValue) < 0) {
+                    minOrderValue = amount;
+                }
+            }
+        }
+        
+        BigDecimal averageOrderValue = orders.isEmpty() ? BigDecimal.ZERO :
+                totalRevenue.divide(new BigDecimal(orders.size()), 2, BigDecimal.ROUND_HALF_UP);
+        
+        stats.put("totalRevenue", totalRevenue);
+        stats.put("averageOrderValue", averageOrderValue);
+        stats.put("maxOrderValue", maxOrderValue);
+        stats.put("minOrderValue", minOrderValue != null ? minOrderValue : BigDecimal.ZERO);
+        
+        return stats;
+    }
+    
+    /**
+     * 计算客户统计
+     */
+    private Map<String, Object> calculateCustomerStats(List<Order> orders) {
+        Map<String, Object> stats = new HashMap<>();
+        
+        Set<Long> customerIds = new HashSet<>();
+        Set<Long> newCustomerIds = new HashSet<>();
+        Set<Long> returningCustomerIds = new HashSet<>();
+        
+        for (Order order : orders) {
+            Long customerId = order.getUserId();
+            if (customerId != null) {
+                customerIds.add(customerId);
+                
+                // 检查是否为回头客（简化逻辑）
+                if (orderRepository.countByUserId(customerId) > 1) {
+                    returningCustomerIds.add(customerId);
+                } else {
+                    newCustomerIds.add(customerId);
+                }
+            }
+        }
+        
+        stats.put("totalCustomers", customerIds.size());
+        stats.put("newCustomers", newCustomerIds.size());
+        stats.put("returningCustomers", returningCustomerIds.size());
+        
+        // 计算热门客户
+        List<OrderStatisticsVO.CustomerStatVO> topCustomers = calculateTopCustomers(orders);
+        stats.put("topCustomers", topCustomers);
+        
+        // 计算客户区域分布（简化）
+        Map<String, Integer> regionDistribution = new HashMap<>();
+        for (Order order : orders) {
+            String region = extractRegionFromAddress(order.getDeliveryAddress());
+            if (region != null) {
+                regionDistribution.put(region, regionDistribution.getOrDefault(region, 0) + 1);
+            }
+        }
+        stats.put("customerRegionDistribution", regionDistribution);
+        
+        return stats;
+    }
+    
+    /**
+     * 计算商品统计
+     */
+    private Map<String, Object> calculateProductStats(List<Order> orders) {
+        Map<String, Object> stats = new HashMap<>();
+        
+        int totalItemsSold = 0;
+        Map<Long, ProductStat> productStats = new HashMap<>();
+        Map<String, CategoryStat> categoryStats = new HashMap<>();
+        
+        for (Order order : orders) {
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+            for (OrderItem item : items) {
+                totalItemsSold += item.getQuantity();
+                
+                // 商品统计
+                ProductStat productStat = productStats.getOrDefault(item.getProductId(), new ProductStat());
+                productStat.quantitySold += item.getQuantity();
+                productStat.revenue = productStat.revenue.add(
+                        item.getPrice().multiply(new BigDecimal(item.getQuantity()))
+                );
+                productStat.orderCount++;
+                productStats.put(item.getProductId(), productStat);
+                
+                // 分类统计（简化）
+                String category = "未知分类";
+                categoryStats.putIfAbsent(category, new CategoryStat());
+                CategoryStat categoryStat = categoryStats.get(category);
+                categoryStat.quantitySold += item.getQuantity();
+                categoryStat.revenue = categoryStat.revenue.add(
+                        item.getPrice().multiply(new BigDecimal(item.getQuantity()))
+                );
+                categoryStat.productCount = Math.max(categoryStat.productCount, productStats.size());
+            }
+        }
+        
+        // 转换为VO
+        List<OrderStatisticsVO.ProductStatVO> topProducts = productStats.entrySet().stream()
+                .sorted((a, b) -> b.getValue().revenue.compareTo(a.getValue().revenue))
+                .limit(10)
+                .map(entry -> {
+                    ProductStat stat = entry.getValue();
+                    return OrderStatisticsVO.ProductStatVO.builder()
+                            .productId(entry.getKey())
+                            .productName("商品" + entry.getKey()) // 实际应从数据库获取
+                            .quantitySold(stat.quantitySold)
+                            .revenue(stat.revenue)
+                            .orderCount(stat.orderCount)
+                            .build();
+                })
+                .collect(Collectors.toList());
+        
+        List<OrderStatisticsVO.CategoryStatVO> topCategories = categoryStats.entrySet().stream()
+                .sorted((a, b) -> b.getValue().revenue.compareTo(a.getValue().revenue))
+                .limit(5)
+                .map(entry -> {
+                    CategoryStat stat = entry.getValue();
+                    return OrderStatisticsVO.CategoryStatVO.builder()
+                            .category(entry.getKey())
+                            .quantitySold(stat.quantitySold)
+                            .revenue(stat.revenue)
+                            .productCount(stat.productCount)
+                            .build();
+                })
+                .collect(Collectors.toList());
+        
+        BigDecimal averageItemsPerOrder = orders.isEmpty() ? BigDecimal.ZERO :
+                new BigDecimal(totalItemsSold).divide(new BigDecimal(orders.size()), 2, BigDecimal.ROUND_HALF_UP);
+        
+        stats.put("totalItemsSold", totalItemsSold);
+        stats.put("averageItemsPerOrder", averageItemsPerOrder);
+        stats.put("topProducts", topProducts);
+        stats.put("topCategories", topCategories);
+        
+        return stats;
+    }
+    
+    /**
+     * 计算热门客户
+     */
+    private List<OrderStatisticsVO.CustomerStatVO> calculateTopCustomers(List<Order> orders) {
+        Map<Long, CustomerStat> customerStats = new HashMap<>();
+        
+        for (Order order : orders) {
+            Long customerId = order.getUserId();
+            if (customerId != null) {
+                CustomerStat stat = customerStats.getOrDefault(customerId, new CustomerStat());
+                stat.orderCount++;
+                stat.totalSpent = stat.totalSpent.add(order.getFinalAmount() != null ? order.getFinalAmount() : BigDecimal.ZERO);
+                
+                if (stat.firstOrderDate == null || order.getCreateTime().isBefore(stat.firstOrderDate)) {
+                    stat.firstOrderDate = order.getCreateTime();
+                }
+                if (stat.lastOrderDate == null || order.getCreateTime().isAfter(stat.lastOrderDate)) {
+                    stat.lastOrderDate = order.getCreateTime();
+                }
+                
+                customerStats.put(customerId, stat);
+            }
+        }
+        
+        return customerStats.entrySet().stream()
+                .sorted((a, b) -> b.getValue().totalSpent.compareTo(a.getValue().totalSpent))
+                .limit(10)
+                .map(entry -> {
+                    CustomerStat stat = entry.getValue();
+                    return OrderStatisticsVO.CustomerStatVO.builder()
+                            .customerId(entry.getKey())
+                            .customerName("客户" + entry.getKey()) // 实际应从数据库获取
+                            .orderCount(stat.orderCount)
+                            .totalSpent(stat.totalSpent)
+                            .averageOrderValue(stat.totalSpent.divide(new BigDecimal(stat.orderCount), 2, BigDecimal.ROUND_HALF_UP))
+                            .firstOrderDate(stat.firstOrderDate)
+                            .lastOrderDate(stat.lastOrderDate)
+                            .daysSinceLastOrder(stat.lastOrderDate != null ? 
+                                    (int) java.time.Duration.between(stat.lastOrderDate, LocalDateTime.now()).toDays() : 0)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * 计算时间分布
+     */
+    private Map<String, Integer> calculateHourlyDistribution(List<Order> orders) {
+        Map<String, Integer> distribution = new HashMap<>();
+        for (int i = 0; i < 24; i++) {
+            distribution.put(String.format("%02d", i), 0);
+        }
+        
+        for (Order order : orders) {
+            if (order.getCreateTime() != null) {
+                int hour = order.getCreateTime().getHour();
+                String hourKey = String.format("%02d", hour);
+                distribution.put(hourKey, distribution.get(hourKey) + 1);
+            }
+        }
+        
+        return distribution;
+    }
+    
+    private Map<String, Integer> calculateDailyDistribution(List<Order> orders) {
+        Map<String, Integer> distribution = new HashMap<>();
+        String[] days = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
+        for (String day
